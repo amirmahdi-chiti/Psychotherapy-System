@@ -1,7 +1,6 @@
  **Psychotherapy System \- Doctor Panel API Endpoints**
 
-**![][image1]**
-
+![alt text](https://github.com/amirmahdi-chiti/Psychotherapy-System/blob/main/Screenshot%202024-06-11%20at%2019-30-33%20FastAPI%20-%20Swagger%20UI.png?raw=true)
 **Authentication**
 
 ### **1\. Login**
