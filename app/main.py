@@ -4,6 +4,7 @@ from app import models, schemas, crud
 from app.database import engine, get_db
 from typing import List
 import contextlib
+from datetime import datetime, timedelta
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -88,7 +89,12 @@ async def read_appointments_for_patient(patient_id: int, db: AsyncSession = Depe
 
 @app.post("/api/appointments", response_model=schemas.Appointment)
 async def create_appointment(appointment: schemas.AppointmentCreate, db: AsyncSession = Depends(get_db)):
-    return await crud.create_appointment(db=db, appointment=appointment)
+    # Ensure the appointment is 30 minutes long
+    start_time = appointment.time
+    end_time = (datetime.combine(date.min, start_time) + timedelta(minutes=30)).time()
+    appointment_data = appointment.dict()
+    appointment_data["end_time"] = end_time
+    return await crud.create_appointment(db=db, appointment=schemas.AppointmentCreate(**appointment_data))
 
 @app.put("/api/appointments/{appointment_id}", response_model=schemas.Appointment)
 async def update_appointment(appointment_id: int, appointment: schemas.AppointmentCreate, db: AsyncSession = Depends(get_db)):
@@ -104,4 +110,26 @@ async def delete_appointment(appointment_id: int, db: AsyncSession = Depends(get
         raise HTTPException(status_code=404, detail="Appointment not found")
     return {"message": "Appointment deleted"}
 
-# Add more endpoints for MedicalRecord, Message, Invoice, and appointment reservation as needed.
+@app.post("/api/free-times", response_model=schemas.FreeTime)
+async def create_free_time(free_time: schemas.FreeTimeCreate, db: AsyncSession = Depends(get_db)):
+    return await crud.create_free_time(db, free_time=free_time)
+
+@app.get("/api/free-times/doctor/{doctor_id}", response_model=List[schemas.FreeTime])
+async def get_free_times_for_doctor(doctor_id: int, db: AsyncSession = Depends(get_db)):
+    return await crud.get_free_times_for_doctor(db, doctor_id=doctor_id)
+
+@app.delete("/api/free-times/{free_time_id}", response_model=schemas.FreeTime)
+async def delete_free_time(free_time_id: int, db: AsyncSession = Depends(get_db)):
+    db_free_time = await crud.delete_free_time(db, free_time_id=free_time_id)
+    if not db_free_time:
+        raise HTTPException(status_code=404, detail="Free time not found")
+    return db_free_time
+
+@app.post("/api/book-appointment", response_model=schemas.Appointment)
+async def book_appointment(appointment: schemas.AppointmentCreate, db: AsyncSession = Depends(get_db)):
+    # Check if the requested time slot is available
+    free_times = await crud.get_free_times_for_doctor(db, doctor_id=appointment.doctor_id)
+    for free_time in free_times:
+        if free_time.date == appointment.date and free_time.start_time <= appointment.time <= free_time.end_time:
+            return await crud.create_appointment(db=db, appointment=appointment)
+    raise HTTPException(status_code=400, detail="Requested time slot is not available")
